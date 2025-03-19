@@ -26,8 +26,8 @@ def get_nyt_news():
 def hello_world():
     return 'Hello World' 
 
-@app.route('/news-api')
-def new_api():
+@app.route('/news-galore')
+def news_galore():
     news_data = get_nyt_news()
     return news_data
 

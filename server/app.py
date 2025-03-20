@@ -49,6 +49,17 @@ def upload_to_s3(data, bucket_name=os.getenv('AWS_BUCKET_NAME'), key_prefix="raw
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+def get_from_s3(bucket_name="pgupt4-news-app-s3", key_prefix="processed"):
+    # For testing, use a specific key or implement logic to find the latest
+    key = f"{key_prefix}/news-2025-03-19-18-06-50.json"  # Replace with your latest processed key
+    try:
+        response = s3.get_object(Bucket=bucket_name, Key=key)
+        data = json.loads(response["Body"].read().decode("utf-8"))
+        return data
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @app.route('/')
 def hello_world():
     return 'Hello World' 
@@ -59,10 +70,15 @@ def news_galore():
 
     upload_result = upload_to_s3(news_data)
 
-    if upload_result["status"] == "success":
-        return {"message": f"News uploaded to S3 at {upload_result['key']}"}
+    if upload_result["status"] != "success":
+        return {"error": upload_result["message"]}
+    
+    # Fetch processed data from S3 (after Lambda runs)
+    processed_data = get_from_s3()
+    if "error" not in processed_data:
+        return processed_data
     else:
-        return {"error":upload_result["message"]}
+        return {"message": f"Uploaded to S3 at {upload_result['key']}", "fetch_error": processed_data["error"]}
 
 if __name__ == "__main__":
     app.run(debug=True)

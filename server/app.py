@@ -1,9 +1,9 @@
 from flask import Flask
+from flask_cors import CORS
 import requests # for HTTP requests
 import os       # for environment variables
 from dotenv import load_dotenv
 import json
-
 from datetime import datetime
 
 import boto3
@@ -11,6 +11,7 @@ import boto3
 load_dotenv()
 
 app = Flask(__name__)
+CORS(app)
 
 # Get the NYT API key from .env
 NYT_API_KEY = os.getenv("NYT_API_KEY")
@@ -62,9 +63,10 @@ def get_from_s3(bucket_name="pgupt4-news-app-s3", key_prefix="processed"):
         return {"error": str(e)}
 
 
-@app.route('/')
+@app.route('/raw')
 def hello_world():
-    return 'Hello World' 
+    news_data = get_nyt_news()
+    return news_data
 
 @app.route('/news-galore')
 def news_galore():

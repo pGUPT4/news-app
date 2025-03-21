@@ -9,14 +9,8 @@ import FeedTray from "./component/feedTray";
 export default function Home() {
 	return (
 		<div>
-			<Navbar>
-
-			</Navbar>
-
-
-			<FeedTray>
-
-			</FeedTray>
+			<Navbar />
+			<FeedTray />
 		</div>
 	);
 }

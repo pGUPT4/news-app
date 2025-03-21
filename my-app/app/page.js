@@ -8,7 +8,7 @@ import FeedTray from "./component/feedTray";
 
 export default function Home() {
 	return (
-		<div>
+		<div className="w-full">
 			<Navbar />
 			<FeedTray />
 		</div>

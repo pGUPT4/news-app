@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import NewsTile from './newsTile'; // Capitalized import
+import NewsTile from './newsTile';
 
 const FeedTray = () => {
   const [newsItems, setNewsItems] = useState([]);
@@ -17,7 +17,7 @@ const FeedTray = () => {
           throw new Error('Failed to fetch news');
         }
         const data = await response.json();
-        setNewsItems(data); // [{title, url}, ...]
+        setNewsItems(data); 
         setLoading(false);
       } catch (err) {
         setError(err.message);
@@ -27,18 +27,21 @@ const FeedTray = () => {
 
     fetchNews();
   }, []);
-
+  
+  
   return (
-    <div className="flex justify-center">
-      <div className="mt-20 w-[1400px] h-[900px] bg-gray-400 rounded-lg p-4 overflow-y-auto">
+    <div className="flex justify-center min-h-screen">
+      <div className="mt-20 w-full max-w-[1150px] h-[900px] bg-gray-400 rounded-lg p-4 overflow-y-auto">
         {loading ? (
           <div className="text-gray-800 text-center">Loading news...</div>
         ) : error ? (
           <div className="text-red-900 text-center">Error: {error}</div>
         ) : (
-          newsItems.map((item, index) => (
-            <NewsTile key={index} title={item.title} url={item.url} /> // Capitalized NewsTile
-          ))
+          <div className="flex flex-wrap gap-4 justify-center">
+          {newsItems.map((item, index) => (
+            <NewsTile key={index} title={item.title} url={item.url} />
+          ))}
+          </div>
         )}
       </div>
     </div>

@@ -1,11 +1,11 @@
-from flask import Flask
+from flask import Flask, jsonify
 from flask_cors import CORS
+import pymongo
 import requests # for HTTP requests
 import os       # for environment variables
 from dotenv import load_dotenv
 import json
 from datetime import datetime
-
 import boto3
 
 load_dotenv()
@@ -13,7 +13,12 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)
 
-# Get the NYT API key from .env
+# MongoDB
+client = pymongo.MongoClient(os.getenv('MONGO_URI'))
+db = client['news_app']
+users_collection_mongo = db['users']
+
+# New York Times
 NYT_API_KEY = os.getenv("NYT_API_KEY")
 
 s3 =boto3.client(
@@ -28,11 +33,11 @@ def get_nyt_news():
     params = {"api-key": NYT_API_KEY}
     try:
         response = requests.get(url, params=params)
-        response.raise_for_status()  # Raises an error for bad responses (e.g., 404, 403)
+        response.raise_for_status()  
         data = response.json()
-        return data["results"]  # Return the list of news items
+        return data["results"]  
     except requests.exceptions.RequestException as e:
-        return {"error": str(e)}  # Return error message if the request fails
+        return {"error": str(e)}  
 
 # Function to upload news data to S3
 def upload_to_s3(data, bucket_name=os.getenv('AWS_BUCKET_NAME'), key_prefix="raw"):
@@ -86,5 +91,17 @@ def news_galore():
 
     # return news_data
 
+@app.route('/mongo', methods=['GET'])
+def test_mongo():
+    try:
+        users_collection_mongo.insert_one({
+            'email': f'test{datetime.now().strftime("%Y%m%d%H%M%S")}@example.com',  
+            'password': 'plainpassword',  
+            'preferences': []
+        })
+        return jsonify({'message': 'MongoDB Atlas connected and test user added'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run()

@@ -4,6 +4,8 @@ import os       # for environment variables
 from dotenv import load_dotenv
 import json
 
+from datetime import datetime
+
 import boto3
 
 load_dotenv()
@@ -33,8 +35,7 @@ def get_nyt_news():
 
 # Function to upload news data to S3
 def upload_to_s3(data, bucket_name=os.getenv('AWS_BUCKET_NAME'), key_prefix="raw"):
-    # Generate a unique key (e.g., raw/news-2025-03-19.json)
-    from datetime import datetime
+    # Generate a unique key
     key = f"{key_prefix}/news-{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}.json"
     
     # Convert data to JSON string and upload
@@ -50,12 +51,13 @@ def upload_to_s3(data, bucket_name=os.getenv('AWS_BUCKET_NAME'), key_prefix="raw
         return {"status": "error", "message": str(e)}
 
 def get_from_s3(bucket_name="pgupt4-news-app-s3", key_prefix="processed"):
-    # For testing, use a specific key or implement logic to find the latest
-    key = f"{key_prefix}/news-2025-03-19-18-06-50.json"  # Replace with your latest processed key
     try:
-        response = s3.get_object(Bucket=bucket_name, Key=key)
-        data = json.loads(response["Body"].read().decode("utf-8"))
-        return data
+        response = s3.list_objects_v2(Bucket=bucket_name, Prefix=key_prefix)
+        if "Contents" not in response:
+            return {"error": "No processed files found"}
+        latest_key = max(response["Contents"], key=lambda x: x["LastModified"])["Key"]
+        obj = s3.get_object(Bucket=bucket_name, Key=latest_key)
+        return json.loads(obj["Body"].read().decode("utf-8"))
     except Exception as e:
         return {"error": str(e)}
 
@@ -79,6 +81,8 @@ def news_galore():
         return processed_data
     else:
         return {"message": f"Uploaded to S3 at {upload_result['key']}", "fetch_error": processed_data["error"]}
+
+    # return news_data
 
 if __name__ == "__main__":
     app.run(debug=True)

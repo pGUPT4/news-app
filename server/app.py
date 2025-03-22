@@ -1,62 +1,82 @@
 from flask import Flask, jsonify
 from flask_cors import CORS
 import pymongo
-import requests # for HTTP requests
-import os       # for environment variables
+import requests
+import os
 from dotenv import load_dotenv
 import json
 from datetime import datetime
 import boto3
+import logging
 
-load_dotenv()
+# Set up logging for EB
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
+load_dotenv()  # Local dev only
 app = Flask(__name__)
 CORS(app)
 
+# Env vars
+env_vars = {
+    "MONGO_URI": os.getenv("MONGO_URI"),
+    "NYT_API_KEY": os.getenv("NYT_API_KEY"),
+    "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
+    "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
+    "AWS_BUCKET_NAME": os.getenv("AWS_BUCKET_NAME", "pgupt4-news-app-s3")
+}
+
+# Validate env vars
+for key, value in env_vars.items():
+    if not value:
+        logger.error(f"Missing env var: {key}")
+        raise ValueError(f"{key} not set")
+
 # MongoDB
-client = pymongo.MongoClient(os.getenv('MONGO_URI'))
-db = client['news_app']
-users_collection_mongo = db['users']
+try:
+    client = pymongo.MongoClient(env_vars["MONGO_URI"])
+    db = client['news_app']
+    users_collection = db['users']
+    logger.info("MongoDB connected successfully")
+except Exception as e:
+    logger.error(f"MongoDB connection failed: {str(e)}")
+    raise
 
-# New York Times
-NYT_API_KEY = os.getenv("NYT_API_KEY")
+# S3
+try:
+    s3 = boto3.client(
+        "s3",
+        aws_access_key_id=env_vars["AWS_ACCESS_KEY_ID"],
+        aws_secret_access_key=env_vars["AWS_SECRET_ACCESS_KEY"]
+    )
+    logger.info("S3 client initialized")
+except Exception as e:
+    logger.error(f"S3 client init failed: {str(e)}")
+    raise
 
-s3 =boto3.client(
-    "s3",
-    aws_access_key_id=os.getenv('AWS_ACCESS_KEY'),
-    aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY')
-)
+NYT_API_KEY = env_vars["NYT_API_KEY"]
 
-# Function to fetch news from NYT Times Wire API
 def get_nyt_news():
     url = "http://api.nytimes.com/svc/news/v3/content/all/all.json"
     params = {"api-key": NYT_API_KEY}
     try:
         response = requests.get(url, params=params)
-        response.raise_for_status()  
-        data = response.json()
-        return data["results"]  
-    except requests.exceptions.RequestException as e:
-        return {"error": str(e)}  
+        response.raise_for_status()
+        return response.json()["results"]
+    except requests.RequestException as e:
+        logger.error(f"NYT API request failed: {str(e)}")
+        return {"error": str(e)}
 
-# Function to upload news data to S3
-def upload_to_s3(data, bucket_name=os.getenv('AWS_BUCKET_NAME'), key_prefix="raw"):
-    # Generate a unique key
+def upload_to_s3(data, bucket_name=env_vars["AWS_BUCKET_NAME"], key_prefix="raw"):
     key = f"{key_prefix}/news-{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}.json"
-    
-    # Convert data to JSON string and upload
     try:
-        s3.put_object(
-            Bucket=bucket_name,
-            Key=key,
-            Body=json.dumps(data),
-            ContentType="application/json"
-        )
+        s3.put_object(Bucket=bucket_name, Key=key, Body=json.dumps(data), ContentType="application/json")
         return {"status": "success", "key": key}
     except Exception as e:
+        logger.error(f"S3 upload failed: {str(e)}")
         return {"status": "error", "message": str(e)}
 
-def get_from_s3(bucket_name="pgupt4-news-app-s3", key_prefix="processed"):
+def get_from_s3(bucket_name=env_vars["AWS_BUCKET_NAME"], key_prefix="processed"):
     try:
         response = s3.list_objects_v2(Bucket=bucket_name, Prefix=key_prefix)
         if "Contents" not in response:
@@ -65,43 +85,36 @@ def get_from_s3(bucket_name="pgupt4-news-app-s3", key_prefix="processed"):
         obj = s3.get_object(Bucket=bucket_name, Key=latest_key)
         return json.loads(obj["Body"].read().decode("utf-8"))
     except Exception as e:
+        logger.error(f"S3 fetch failed: {str(e)}")
         return {"error": str(e)}
-
 
 @app.route('/raw')
 def hello_world():
-    news_data = get_nyt_news()
-    return news_data
+    return jsonify(get_nyt_news())
 
 @app.route('/news-galore')
 def news_galore():
     news_data = get_nyt_news()
-
     upload_result = upload_to_s3(news_data)
-
     if upload_result["status"] != "success":
-        return {"error": upload_result["message"]}
-    
-    # Fetch processed data from S3 (after Lambda runs)
+        return jsonify({"error": upload_result["message"]}), 500
     processed_data = get_from_s3()
     if "error" not in processed_data:
-        return processed_data
-    else:
-        return {"message": f"Uploaded to S3 at {upload_result['key']}", "fetch_error": processed_data["error"]}
+        return jsonify(processed_data)
+    return jsonify({"message": f"Uploaded to S3 at {upload_result['key']}", "fetch_error": processed_data["error"]})
 
-    # return news_data
-
-@app.route('/mongo', methods=['GET'])
-def test_mongo():
+@app.route('/mongo')
+def mongo():
     try:
-        users_collection_mongo.insert_one({
-            'email': f'test{datetime.now().strftime("%Y%m%d%H%M%S")}@example.com',  
-            'password': 'plainpassword',  
-            'preferences': []
-        })
-        return jsonify({'message': 'MongoDB Atlas connected and test user added'}), 200
+        users_collection.insert_one({'email': 'test@example.com'})
+        return jsonify({'message': 'MongoDB Atlas connected and test user added'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# Health check for EB
+@app.route('/')
+def health_check():
+    return jsonify({"status": "ok"}), 200
+
 if __name__ == "__main__":
-    app.run()
+    app.run(host="0.0.0.0", port=5000)

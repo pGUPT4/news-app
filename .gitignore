@@ -1,1 +1,11 @@
 server/.env
+# server/venv/
+# server/__pycache__/
+# *.pyc
+venv/
+server/venv/
+__pycache__/
+*.pyc
+.env
+node_modules/
+my-app/.next/

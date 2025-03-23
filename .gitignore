@@ -6,6 +6,6 @@ venv/
 server/venv/
 __pycache__/
 *.pyc
-.env
 node_modules/
 my-app/.next/
+server/app.py

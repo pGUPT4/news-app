@@ -1,4 +1,10 @@
-from flask import Flask, jsonify
+from flask import (
+    Flask, 
+    jsonify, 
+    request, 
+    session, 
+    redirect, 
+    url_for)
 from flask_cors import CORS
 import pymongo
 import requests
@@ -7,8 +13,10 @@ import json
 from datetime import datetime
 import boto3
 import logging
+from werkzeug.security import (
+    generate_password_hash, 
+    check_password_hash)
 
-# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -23,31 +31,23 @@ env_vars = {
     "AWS_BUCKET_NAME": os.getenv("AWS_BUCKET_NAME", "pgupt4-news-app-s3")
 }
 
-# Validate env vars
 for key, value in env_vars.items():
     if not value:
         logger.error(f"Missing env var: {key}")
         raise ValueError(f"{key} not set")
 
-client = None
-try:
-    client = pymongo.MongoClient(env_vars["MONGO_URI"])
-    db = client['news_app']
-    users_collection = db['users']
-    logger.info("MongoDB connected successfully")
-except Exception as e:
-    logger.error(f"MongoDB connection failed: {str(e)}")
+# MongoDB
+client = pymongo.MongoClient(env_vars["MONGO_URI"])
+db = client['news_app']
+users_collection = db['users']
+logger.info("MongoDB connected")
 
-s3 = None
-try:
-    s3 = boto3.client(
-        "s3",
-        aws_access_key_id=env_vars["AWS_ACCESS_KEY_ID"],
-        aws_secret_access_key=env_vars["AWS_SECRET_ACCESS_KEY"]
-    )
-    logger.info("S3 client initialized")
-except Exception as e:
-    logger.error(f"S3 client init failed: {str(e)}")
+# S3
+s3 = boto3.client(
+    "s3",
+    aws_access_key_id=env_vars["AWS_ACCESS_KEY_ID"],
+    aws_secret_access_key=env_vars["AWS_SECRET_ACCESS_KEY"]
+)
 
 NYT_API_KEY = env_vars["NYT_API_KEY"]
 
@@ -63,29 +63,47 @@ def get_nyt_news():
         return {"error": str(e)}
 
 def upload_to_s3(data, bucket_name=env_vars["AWS_BUCKET_NAME"], key_prefix="raw"):
-    if not s3:
-        return {"status": "error", "message": "S3 client not initialized"}
     key = f"{key_prefix}/news-{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}.json"
-    try:
-        s3.put_object(Bucket=bucket_name, Key=key, Body=json.dumps(data), ContentType="application/json")
-        return {"status": "success", "key": key}
-    except Exception as e:
-        logger.error(f"S3 upload failed: {str(e)}")
-        return {"status": "error", "message": str(e)}
+    s3.put_object(Bucket=bucket_name, Key=key, Body=json.dumps(data), ContentType="application/json")
+    return {"status": "success", "key": key}
 
 def get_from_s3(bucket_name=env_vars["AWS_BUCKET_NAME"], key_prefix="processed"):
-    if not s3:
-        return {"error": "S3 client not initialized"}
-    try:
-        response = s3.list_objects_v2(Bucket=bucket_name, Prefix=key_prefix)
-        if "Contents" not in response:
-            return {"error": "No processed files found"}
-        latest_key = max(response["Contents"], key=lambda x: x["LastModified"])["Key"]
-        obj = s3.get_object(Bucket=bucket_name, Key=latest_key)
-        return json.loads(obj["Body"].read().decode("utf-8"))
-    except Exception as e:
-        logger.error(f"S3 fetch failed: {str(e)}")
-        return {"error": str(e)}
+    response = s3.list_objects_v2(Bucket=bucket_name, Prefix=key_prefix)
+    if "Contents" not in response:
+        return {"error": "No processed files found"}
+    latest_key = max(response["Contents"], key=lambda x: x["LastModified"])["Key"]
+    obj = s3.get_object(Bucket=bucket_name, Key=latest_key)
+    return json.loads(obj["Body"].read().decode("utf-8"))
+
+# Login Routes
+@app.route('/register', methods=['POST'])
+def register():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+    if not username or not password:
+        return jsonify({"error": "Missing username or password"}), 400
+    if users_collection.find_one({"username": username}):
+        return jsonify({"error": "Username taken"}), 409
+    hashed_password = generate_password_hash(password)
+    users_collection.insert_one({"username": username, "password": hashed_password})
+    return jsonify({"message": "User registered"}), 201
+
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+    user = users_collection.find_one({"username": username})
+    if user and check_password_hash(user['password'], password):
+        session['username'] = username
+        return jsonify({"message": "Logged in"}), 200
+    return jsonify({"error": "Invalid credentials"}), 401
+
+@app.route('/logout')
+def logout():
+    session.pop('username', None)
+    return jsonify({"message": "Logged out"}), 200
 
 @app.route('/raw')
 def hello_world():
@@ -93,6 +111,8 @@ def hello_world():
 
 @app.route('/news-galore')
 def news_galore():
+    if 'username' not in session:
+        return jsonify({"error": "Login required"}), 401
     news_data = get_nyt_news()
     upload_result = upload_to_s3(news_data)
     if upload_result["status"] != "success":
@@ -102,41 +122,9 @@ def news_galore():
         return jsonify(processed_data)
     return jsonify({"message": f"Uploaded to S3 at {upload_result['key']}", "fetch_error": processed_data["error"]})
 
-@app.route('/mongo')
-def mongo():
-    if not client:
-        return jsonify({'error': 'MongoDB not connected'}), 500
-    try:
-        users_collection.insert_one({'email': 'test@example.com'})
-        return jsonify({'message': 'MongoDB Atlas connected and test user added'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
 @app.route('/')
 def health_check():
     return jsonify({"status": "ok"}), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
-
-# from flask import Flask, jsonify
-# from flask_cors import CORS
-# import logging
-
-# logging.basicConfig(level=logging.INFO)
-# logger = logging.getLogger(__name__)
-
-# app = Flask(__name__)
-# CORS(app)
-
-# @app.route('/news-galore')
-# def news_galore():
-#     logger.info("Serving /news-galore")
-#     return jsonify({"news": "Test from Heroku"})
-
-# @app.route('/')
-# def health_check():
-#     return jsonify({"status": "ok"}), 200
-
-# if __name__ == "__main__":
-#     app.run(host="0.0.0.0", port=5000)

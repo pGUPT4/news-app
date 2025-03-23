@@ -9,10 +9,10 @@ const FeedTray = () => {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+useEffect(() => {
     const fetchNews = async () => {
       try {
-        const response = await fetch('http://127.0.0.1:5000/news-galore');
+        const response = await fetch('http://news-recommender-backend-env.eba-pwgqwnyf.us-east-2.elasticbeanstalk.com/news-galore');
         if (!response.ok) {
           throw new Error('Failed to fetch news');
         }
@@ -26,7 +26,24 @@ const FeedTray = () => {
     };
 
     fetchNews();
-  }, []);
+}, []);
+
+// useEffect(() => {
+//     const fetchNews = async () => {
+//         try {
+//             const response = await fetch('https://news-recommender-backend-env.eba-pwgqwnyf.us-east-2.elasticbeanstalk.com/news-galore');
+//             if (!response.ok) throw new Error('Failed to fetch news');
+//             const data = await response.json();
+//             setNews(data.error ? [] : data);
+//             setError(data.error || data.fetch_error || null);
+//         } catch (err) {
+//             setError(err.message);
+//         }
+//     };
+//     fetchNews();
+//   }, []);
+
+  
   
   
   return (

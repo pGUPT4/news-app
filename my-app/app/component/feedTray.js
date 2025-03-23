@@ -12,7 +12,7 @@ const FeedTray = () => {
 useEffect(() => {
     const fetchNews = async () => {
       try {
-        const response = await fetch('https://news-recommender-backend.herokuapp.com/news-galore/news-galore');
+        const response = await fetch('https://news-recommender-backend-20d530136c15.herokuapp.com/news-galore');
         if (!response.ok) {
           throw new Error('Failed to fetch news');
         }

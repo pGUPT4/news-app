@@ -12,7 +12,7 @@ const FeedTray = () => {
 useEffect(() => {
     const fetchNews = async () => {
       try {
-        const response = await fetch('http://news-recommender-backend-env.eba-pwgqwnyf.us-east-2.elasticbeanstalk.com/news-galore');
+        const response = await fetch('https://news-recommender-backend.herokuapp.com/news-galore/news-galore');
         if (!response.ok) {
           throw new Error('Failed to fetch news');
         }

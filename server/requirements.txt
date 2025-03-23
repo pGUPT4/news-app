@@ -4,3 +4,4 @@ pymongo
 boto3
 requests
 flask-cors
+werkzeug

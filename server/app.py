@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)
+app.secret_key = os.getenv("SECRET_KEY", "temp-secret")
 
 env_vars = {
     "MONGO_URI": os.getenv("MONGO_URI"),

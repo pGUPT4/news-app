@@ -8,3 +8,4 @@ __pycache__/
 *.pyc
 node_modules/
 my-app/.next/
+server/google_cloud_console.json

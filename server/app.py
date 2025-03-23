@@ -3,21 +3,18 @@ from flask_cors import CORS
 import pymongo
 import requests
 import os
-from dotenv import load_dotenv
 import json
 from datetime import datetime
 import boto3
 import logging
 
-# Set up logging for EB
+# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-load_dotenv()  # Local dev only
 app = Flask(__name__)
 CORS(app)
 
-# Env vars
 env_vars = {
     "MONGO_URI": os.getenv("MONGO_URI"),
     "NYT_API_KEY": os.getenv("NYT_API_KEY"),
@@ -32,7 +29,7 @@ for key, value in env_vars.items():
         logger.error(f"Missing env var: {key}")
         raise ValueError(f"{key} not set")
 
-# MongoDB
+client = None
 try:
     client = pymongo.MongoClient(env_vars["MONGO_URI"])
     db = client['news_app']
@@ -40,9 +37,8 @@ try:
     logger.info("MongoDB connected successfully")
 except Exception as e:
     logger.error(f"MongoDB connection failed: {str(e)}")
-    raise
 
-# S3
+s3 = None
 try:
     s3 = boto3.client(
         "s3",
@@ -52,7 +48,6 @@ try:
     logger.info("S3 client initialized")
 except Exception as e:
     logger.error(f"S3 client init failed: {str(e)}")
-    raise
 
 NYT_API_KEY = env_vars["NYT_API_KEY"]
 
@@ -68,6 +63,8 @@ def get_nyt_news():
         return {"error": str(e)}
 
 def upload_to_s3(data, bucket_name=env_vars["AWS_BUCKET_NAME"], key_prefix="raw"):
+    if not s3:
+        return {"status": "error", "message": "S3 client not initialized"}
     key = f"{key_prefix}/news-{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}.json"
     try:
         s3.put_object(Bucket=bucket_name, Key=key, Body=json.dumps(data), ContentType="application/json")
@@ -77,6 +74,8 @@ def upload_to_s3(data, bucket_name=env_vars["AWS_BUCKET_NAME"], key_prefix="raw"
         return {"status": "error", "message": str(e)}
 
 def get_from_s3(bucket_name=env_vars["AWS_BUCKET_NAME"], key_prefix="processed"):
+    if not s3:
+        return {"error": "S3 client not initialized"}
     try:
         response = s3.list_objects_v2(Bucket=bucket_name, Prefix=key_prefix)
         if "Contents" not in response:
@@ -105,16 +104,39 @@ def news_galore():
 
 @app.route('/mongo')
 def mongo():
+    if not client:
+        return jsonify({'error': 'MongoDB not connected'}), 500
     try:
         users_collection.insert_one({'email': 'test@example.com'})
         return jsonify({'message': 'MongoDB Atlas connected and test user added'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# Health check for EB
 @app.route('/')
 def health_check():
     return jsonify({"status": "ok"}), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+
+# from flask import Flask, jsonify
+# from flask_cors import CORS
+# import logging
+
+# logging.basicConfig(level=logging.INFO)
+# logger = logging.getLogger(__name__)
+
+# app = Flask(__name__)
+# CORS(app)
+
+# @app.route('/news-galore')
+# def news_galore():
+#     logger.info("Serving /news-galore")
+#     return jsonify({"news": "Test from Heroku"})
+
+# @app.route('/')
+# def health_check():
+#     return jsonify({"status": "ok"}), 200
+
+# if __name__ == "__main__":
+#     app.run(host="0.0.0.0", port=5000)

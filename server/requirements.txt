@@ -3,3 +3,4 @@ flask
 pymongo
 boto3
 requests
+flask-cors

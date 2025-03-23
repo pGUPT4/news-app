@@ -16,7 +16,7 @@ const NewsTile = ({ title, url }) => {
         Read More
       </a>
     </div>
-  );
+  );n
 };
 
 export default NewsTile;

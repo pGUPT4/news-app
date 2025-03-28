@@ -9,6 +9,9 @@ import boto3
 import logging
 from werkzeug.security import generate_password_hash, check_password_hash
 from requests_oauthlib import OAuth2Session
+from dotenv import load_dotenv
+
+load_dotenv()  # Load .env file
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
